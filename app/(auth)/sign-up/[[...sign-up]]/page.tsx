@@ -1,9 +1,11 @@
-import { SignUp } from "@clerk/nextjs";
+import { SignUp } from '@clerk/nextjs'
 
-export default function SignUpPage() {
+const Page = () => {
   return (
-    <div className="flex min-h-full flex-1 items-center justify-center px-4 py-10">
-      <SignUp path="/sign-up" routing="path" signInUrl="/sign-in" />
+    <div className="flex-center glassmorphism-auth h-screen w-full">
+      <SignUp />
     </div>
-  );
+  )
 }
+
+export default Page
