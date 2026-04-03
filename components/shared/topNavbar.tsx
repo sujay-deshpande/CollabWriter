@@ -55,7 +55,7 @@ const TopNavbar = async({ onlySearch = false, searchAction = '/', searchValue = 
             <Input type='text' className='w-full bg-black-2 pl-10 py-3 rounded-lg border-none text-white-1' placeholder='Enter your file name'/>
         </div>
 
-        {user?(<Link href={'/profile/edit'} className='w-full flex justify-end items-center'>
+        {user?(<Link href={'/profile'} className='w-full flex justify-end items-center'>
             <div className=" bg-[#ffffff08] px-6 rounded-lg py-1 flex items-center justify-center gap-3">
                 <Image
                     src={userInfo?.image||user?.imageUrl}
@@ -69,13 +69,14 @@ const TopNavbar = async({ onlySearch = false, searchAction = '/', searchValue = 
                     <h4 className='text-small-semibold text-light-1 font-extrabold'>{userInfo?.name||user?.firstName}</h4>
                     <p className="text-small-medium text-gray-1">@{userInfo?.username || user?.username}</p>
                 </div>
-
+                <Link href={'/profile'} className=''>
                 <Image
                     src="/icons/edit.svg"
                     alt="logo"
                     width={20}
                     height={20}
                 />
+                </Link>
             </div>
         </Link>):""}
 

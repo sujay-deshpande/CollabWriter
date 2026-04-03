@@ -1,9 +1,8 @@
-import DocumentCard from '@/components/cards/documentCard';
-import { fetchDocumentsByUserId } from '@/lib/actions/document.action';
+import TextFilesView from '@/components/cards/textFilesView';
+import { fetchLibraryDocuments } from '@/lib/actions/document.action';
 import { fetchUser } from '@/lib/actions/user.action';
 import { currentUser } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
-import { v4 as uuidv4 } from 'uuid';
 import TopNavbar from '@/components/shared/topNavbar';
 
 
@@ -13,35 +12,47 @@ const Page = async () => {
     redirect('/sign-in');
   }
 
-  const userInfo = await fetchUser(user.id);
+  const userInfo: any = await fetchUser(user.id);
   if (!userInfo) {
     redirect('/onboarding');
   }
 
-  const documents = await fetchDocumentsByUserId(userInfo._id.toString(), "text");
-  const normalizedDocuments = (documents || []).map((document: any) => ({
-    id: String(document.id ?? document._id),
-    title: String(document.title ?? "Untitled"),
-    description: String(document.description ?? ""),
-    allowedUsers: Array.isArray(document.allowedUsers)
-      ? document.allowedUsers.map((email: any) => String(email))
-      : [],
-    isPublic: Boolean(document.isPublic),
-  }));
+  const userObjectId = String((userInfo as any)._id);
+  const primaryEmail = user.emailAddresses?.[0]?.emailAddress || '';
+  const documents = await fetchLibraryDocuments(userObjectId, primaryEmail);
+  const normalizedDocuments = (documents || [])
+    .filter((document: any) => document.type === 'text')
+    .map((document: any) => {
+      const ownerValue = document.userId;
+      const ownerId = typeof ownerValue === 'object' ? String(ownerValue?._id || '') : String(ownerValue || '');
+
+      return {
+        id: String(document.id ?? document._id),
+        title: String(document.title ?? 'Untitled'),
+        description: String(document.description ?? ''),
+        createdAt: document.createdAt ? new Date(document.createdAt).toISOString() : new Date().toISOString(),
+        updatedAt: document.lastModified
+          ? new Date(document.lastModified).toISOString()
+          : document.updatedAt
+            ? new Date(document.updatedAt).toISOString()
+            : new Date().toISOString(),
+        isPublic: Boolean(document.isPublic ?? false),
+        allowedUsers: Array.isArray(document.allowedUsers) ? document.allowedUsers : [],
+        owner: {
+          id: ownerId,
+          name: typeof ownerValue === 'object' ? String(ownerValue?.name || '') : '',
+          username: typeof ownerValue === 'object' ? String(ownerValue?.username || '') : '',
+        },
+        isOwner: ownerId === userObjectId,
+      };
+    });
 
   return (
     <div className="">
       <TopNavbar />
       <div className='mt-9 flex flex-col gap-9 flex-1 px-4 sm:px-14'>
         <section className='flex flex-col gap-5 max-sm:px-4'>
-          <h1 className='text-10 font-bold text-white-1'>Your Text Files</h1>
-
-          <div className="podcast_grid">
-            <DocumentCard imgUrl={"/icons/add.png"} title={"Add new Document"} description={"Add a new blank Document"} docId={uuidv4()} type={"text"} isNew={true} userId={userInfo._id.toString()} />
-            {normalizedDocuments.map((document: any) => (
-              <DocumentCard key={document.id} imgUrl={"https://google.oit.ncsu.edu/wp-content/uploads/sites/6/2021/01/Google_Docs.max-2800x2800-1.png"} title={document.title} description={document.description} docId={document.id} type={"text"} isNew={false} userId={userInfo._id.toString()} accessEmails={document.allowedUsers} isPublic={document.isPublic}/>
-            ))}
-          </div>
+          <TextFilesView items={normalizedDocuments} userId={userObjectId} />
         </section>
       </div>
     </div>

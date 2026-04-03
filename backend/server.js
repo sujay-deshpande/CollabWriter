@@ -2,6 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const fsp = require('fs/promises');
 const path = require('path');
+const { spawn } = require('child_process');
 const { WebSocketServer } = require('ws');
 const Y = require('yjs');
 
@@ -127,6 +128,122 @@ async function readBody(req) {
   });
 }
 
+function runProcess(command, args = [], options = {}) {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      env: process.env,
+      shell: false,
+      windowsHide: true,
+    });
+
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    const timeoutMs = Number(options.timeoutMs || 10000);
+
+    const finalize = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve(result);
+    };
+
+    const timeout = setTimeout(() => {
+      try {
+        child.kill();
+      } catch {
+        // ignore kill failures
+      }
+      finalize({ stdout, stderr: `${stderr}\nExecution timed out after ${timeoutMs}ms`, exitCode: null, timedOut: true });
+    }, timeoutMs);
+
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on('error', (error) => {
+      finalize({ stdout, stderr: error.message || String(error), exitCode: 1, timedOut: false });
+    });
+
+    child.on('close', (exitCode) => {
+      finalize({ stdout, stderr, exitCode, timedOut: false });
+    });
+  });
+}
+
+function runShellCommand(command, options = {}) {
+  const shellExecutable = process.platform === 'win32' ? 'cmd.exe' : '/bin/sh';
+  const shellArgs = process.platform === 'win32' ? ['/c', command] : ['-lc', command];
+  return runProcess(shellExecutable, shellArgs, options);
+}
+
+function toPosixPath(value) {
+  return String(value || '').replace(/\\/g, '/');
+}
+
+async function executeCodeFile(projectId, relPath) {
+  const fullPath = resolveProjectFilePath(projectId, relPath);
+  const exists = await pathExists(fullPath);
+  if (!exists) {
+    throw new Error(`File not found: ${relPath}`);
+  }
+
+  const fileExt = path.extname(fullPath).slice(1).toLowerCase();
+  const workDir = path.dirname(fullPath);
+  const baseName = path.basename(fullPath, path.extname(fullPath));
+
+  if (fileExt === 'js') {
+    return runProcess(process.execPath, [fullPath], { cwd: workDir, timeoutMs: 10000 });
+  }
+
+  if (fileExt === 'py') {
+    const pythonCommand = process.platform === 'win32' ? 'python' : 'python3';
+    return runProcess(pythonCommand, [fullPath], { cwd: workDir, timeoutMs: 10000 });
+  }
+
+  if (fileExt === 'c' || fileExt === 'cpp' || fileExt === 'cc' || fileExt === 'cxx') {
+    const compiler = fileExt === 'c' ? 'gcc' : 'g++';
+    const outputFile = path.join(workDir, `${baseName}${process.platform === 'win32' ? '.exe' : ''}`);
+
+    const compileResult = await runProcess(compiler, [fullPath, '-o', outputFile], {
+      cwd: workDir,
+      timeoutMs: 20000,
+    });
+
+    if (compileResult.exitCode !== 0) {
+      return {
+        ...compileResult,
+        stdout: compileResult.stdout,
+        stderr: compileResult.stderr || 'Compilation failed',
+        compiled: false,
+      };
+    }
+
+    const runResult = await runProcess(outputFile, [], {
+      cwd: workDir,
+      timeoutMs: 10000,
+    });
+
+    try {
+      await fsp.unlink(outputFile);
+    } catch {
+      // ignore cleanup errors
+    }
+
+    return {
+      ...runResult,
+      compiled: true,
+    };
+  }
+
+  throw new Error(`Execution is not supported for .${fileExt || 'unknown'} files yet`);
+}
+
 function broadcastJson(wss, payload) {
   const message = JSON.stringify(payload);
   for (const client of wss.clients) {
@@ -234,6 +351,45 @@ function setupWebSocket(server, wss) {
   const socketDocumentRooms = new Map();
   const documentSnapshots = new Map();
   const yDocuments = new Map();
+  const terminalSessions = new Map();
+
+  const getTerminalSession = (projectId, terminalId) => {
+    const normalizedProjectId = String(projectId || '').trim();
+    const normalizedTerminalId = String(terminalId || '0').trim() || '0';
+    const key = `${normalizedProjectId}:${normalizedTerminalId}`;
+
+    if (!terminalSessions.has(key)) {
+      const projectRoot = path.join(USER_ROOT, normalizedProjectId);
+      terminalSessions.set(key, {
+        key,
+        projectId: normalizedProjectId,
+        terminalId: normalizedTerminalId,
+        projectRoot,
+        cwd: projectRoot,
+      });
+    }
+
+    return terminalSessions.get(key);
+  };
+
+  const getDisplayCwd = (session) => {
+    const rel = path.relative(session.projectRoot, session.cwd);
+    if (!rel) {
+      return '/';
+    }
+    return `/${toPosixPath(rel)}`;
+  };
+
+  const getPrompt = (session) => `${getDisplayCwd(session)} $ `;
+
+  const sendTerminalData = (projectId, terminalId, data) => {
+    broadcastJson(wss, {
+      type: 'terminal:data',
+      projectId: String(projectId || ''),
+      terminalId: String(terminalId || '0'),
+      data,
+    });
+  };
 
   const encodeUint8ArrayToBase64 = (data) => Buffer.from(data).toString('base64');
   const decodeBase64ToUint8Array = (encoded) => new Uint8Array(Buffer.from(String(encoded || ''), 'base64'));
@@ -259,6 +415,7 @@ function setupWebSocket(server, wss) {
     }
 
     if (room.members.size === 0) {
+      // Ephemeral behavior: clear room chat when everyone leaves.
       chatRooms.delete(roomId);
       return;
     }
@@ -389,15 +546,125 @@ function setupWebSocket(server, wss) {
         }
 
         if (type === 'terminal:write') {
-          const projectId = message.projectId || data.projectId;
-          const output = String(data || '').trim();
-          socket.send(
-            JSON.stringify({
-              type: 'terminal:data',
+          const projectId = String(message.projectId || data.projectId || '').trim();
+          const terminalId = String(message.terminalId || data.terminalId || '0');
+          const rawCommand = String(message.command ?? data.command ?? data ?? '').trim();
+
+          if (!projectId) {
+            return;
+          }
+
+          const session = getTerminalSession(projectId, terminalId);
+          await fsp.mkdir(session.projectRoot, { recursive: true });
+
+          if (!rawCommand) {
+            sendTerminalData(projectId, terminalId, getPrompt(session));
+            return;
+          }
+
+          const [baseCommand, ...rest] = rawCommand.split(/\s+/);
+          const normalizedCommand = baseCommand.toLowerCase();
+
+          if (normalizedCommand === 'clear') {
+            sendTerminalData(projectId, terminalId, '\x1b[2J\x1b[H');
+            sendTerminalData(projectId, terminalId, getPrompt(session));
+            return;
+          }
+
+          if (normalizedCommand === 'help') {
+            sendTerminalData(
               projectId,
-              data: output ? `\r\n${output}\r\n` : '',
-            })
-          );
+              terminalId,
+              'Commands: help, pwd, ls, dir, cd <path>, clear, and any shell command.\r\n'
+            );
+            sendTerminalData(projectId, terminalId, getPrompt(session));
+            return;
+          }
+
+          if (normalizedCommand === 'pwd') {
+            sendTerminalData(projectId, terminalId, `${getDisplayCwd(session)}\r\n`);
+            sendTerminalData(projectId, terminalId, getPrompt(session));
+            return;
+          }
+
+          if (normalizedCommand === 'ls' || normalizedCommand === 'dir') {
+            const entries = await fsp.readdir(session.cwd, { withFileTypes: true });
+            const lines = entries
+              .map((entry) => (entry.isDirectory() ? `[D] ${entry.name}` : `    ${entry.name}`))
+              .join('\r\n');
+            sendTerminalData(projectId, terminalId, `${lines || '(empty)'}\r\n`);
+            sendTerminalData(projectId, terminalId, getPrompt(session));
+            return;
+          }
+
+          if (normalizedCommand === 'cd') {
+            const targetArg = rest.join(' ').trim() || '/';
+            const nextPath = targetArg.startsWith('/')
+              ? path.resolve(session.projectRoot, `.${targetArg}`)
+              : path.resolve(session.cwd, targetArg);
+
+            const relativeToProject = path.relative(session.projectRoot, nextPath);
+            const outsideProject = relativeToProject.startsWith('..') || path.isAbsolute(relativeToProject);
+            if (outsideProject || !(await pathExists(nextPath))) {
+              sendTerminalData(projectId, terminalId, `cd: no such directory: ${targetArg}\r\n`);
+              sendTerminalData(projectId, terminalId, getPrompt(session));
+              return;
+            }
+
+            const stat = await fsp.stat(nextPath);
+            if (!stat.isDirectory()) {
+              sendTerminalData(projectId, terminalId, `cd: not a directory: ${targetArg}\r\n`);
+              sendTerminalData(projectId, terminalId, getPrompt(session));
+              return;
+            }
+
+            session.cwd = nextPath;
+            sendTerminalData(projectId, terminalId, `${getDisplayCwd(session)}\r\n`);
+            sendTerminalData(projectId, terminalId, getPrompt(session));
+            return;
+          }
+
+          const shellResult = await runShellCommand(rawCommand, {
+            cwd: session.cwd,
+            timeoutMs: 15000,
+          });
+
+          const output = `${shellResult.stdout || ''}${shellResult.stderr || ''}`;
+          sendTerminalData(projectId, terminalId, `${output || '\r\n'}\r\n`);
+          sendTerminalData(projectId, terminalId, getPrompt(session));
+          return;
+        }
+
+        if (type === 'code:execute') {
+          const projectId = String(message.projectId || data.projectId || '').trim();
+          const relPath = String(message.path || data.path || '').trim();
+          const terminalId = String(message.terminalId || data.terminalId || '0');
+
+          if (!projectId || !relPath) {
+            sendTerminalData(projectId, terminalId, '\r\nMissing project id or file path for execution.\r\n');
+            return;
+          }
+
+          const session = getTerminalSession(projectId, terminalId);
+          await fsp.mkdir(session.projectRoot, { recursive: true });
+
+          sendTerminalData(projectId, terminalId, `\r\n> Running ${relPath}\r\n`);
+
+          try {
+            const result = await executeCodeFile(projectId, relPath);
+            const output = `${result.stdout || ''}${result.stderr || ''}`.trim() || 'Process finished with no output.';
+            const exitLabel = result.timedOut
+              ? 'Timed out'
+              : typeof result.exitCode === 'number'
+                ? `Exit code ${result.exitCode}`
+                : 'Finished';
+
+            sendTerminalData(projectId, terminalId, `\r\n${output}\r\n${exitLabel}\r\n`);
+            sendTerminalData(projectId, terminalId, getPrompt(session));
+          } catch (error) {
+            sendTerminalData(projectId, terminalId, `\r\nExecution failed: ${error.message || 'Unknown error'}\r\n`);
+            sendTerminalData(projectId, terminalId, getPrompt(session));
+          }
           return;
         }
 
@@ -528,6 +795,9 @@ function setupWebSocket(server, wss) {
             email: String(message.email || data.email || ''),
             color: String(message.color || data.color || '#2563eb'),
             cursorPosition: Number(message.cursorPosition ?? data.cursorPosition ?? 0),
+            row: Number(message.row ?? data.row ?? 0),
+            column: Number(message.column ?? data.column ?? 0),
+            path: String(message.path || data.path || ''),
           };
 
           broadcastToDocumentRoom(docId, payload, socket);

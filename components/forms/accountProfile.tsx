@@ -24,7 +24,7 @@ interface Props {
         objectId: string;
         name: string;
         username: string;
-        email:string;
+        email: string;
         bio: string;
         image: string;
     };
@@ -34,7 +34,7 @@ interface Props {
 const AccountProfile = ({ user, btnTitle }: Props) => {
     const router = useRouter();
     const pathname = usePathname();
-
+    const currentPath: string = pathname ?? "";
     const [file, setFile] = useState<File | null>(null);
 
     const form = useForm<any>({
@@ -42,7 +42,7 @@ const AccountProfile = ({ user, btnTitle }: Props) => {
             profile_photo: user?.image ? user.image : "",
             name: user?.name ? user.name : "",
             username: user?.username ? user.username : "",
-            email: user?.email?user?.email:"",
+            email: user?.email ? user.email : "",
             bio: user?.bio ? user.bio : "",
         },
     });
@@ -56,7 +56,7 @@ const AccountProfile = ({ user, btnTitle }: Props) => {
             formData.append("profile_photo", file);
             try {
                 const imgRes = await UploadImage(formData);
-    
+
                 if (imgRes && imgRes.fileUrl) {
                     values.profile_photo = imgRes.fileUrl;
                 }
@@ -65,19 +65,19 @@ const AccountProfile = ({ user, btnTitle }: Props) => {
                 return;
             }
         }
-        
+
         await updateUser({
             name: values.name,
-            path: pathname,
+            path: currentPath,
             username: values.username,
             id: user.id,
-            email:values.email,
+            email: values.email,
             bio: values.bio,
             imageUrl: values.profile_photo,
         });
 
-        if (pathname === "/profile/edit") {
-            router.back();
+        if (currentPath === "/profile/edit") {
+            router.push(`/profile/${user.id}`);
         } else {
             router.push("/");
         }
@@ -97,19 +97,19 @@ const AccountProfile = ({ user, btnTitle }: Props) => {
 
     return (
         <Form {...form}>
-            <form className="flex flex-col justify-start gap-10" onSubmit={form.handleSubmit(onSubmit)}>
+            <form className="flex flex-col justify-start gap-5" onSubmit={form.handleSubmit(onSubmit)}>
                 <FormField
                     control={form.control}
                     name="profile_photo"
                     render={({ field }) => (
-                        <FormItem className="flex items-center gap-4">
+                        <FormItem className="flex items-center gap-3">
                             <FormLabel className="account-form_image-label">
                                 {field.value ? (
                                     <Image
                                         src={field.value}
                                         alt="profile_icon"
-                                        width={96}
-                                        height={96}
+                                        width={72}
+                                        height={72}
                                         priority
                                         className="rounded-full object-contain"
                                     />
@@ -117,8 +117,8 @@ const AccountProfile = ({ user, btnTitle }: Props) => {
                                     <Image
                                         src="/assets/profile.svg"
                                         alt="profile_icon"
-                                        width={24}
-                                        height={24}
+                                        width={20}
+                                        height={20}
                                         className="object-contain"
                                     />
                                 )}
@@ -142,43 +142,49 @@ const AccountProfile = ({ user, btnTitle }: Props) => {
                     )}
                 />
 
-                <FormField control={form.control} name="name" render={({ field }) => (
-                    <FormItem className="flex w-full flex-col gap-3">
-                        <FormLabel className="text-base-semibold text-light-2">Name</FormLabel>
-                        <FormControl>
-                            <Input type="text" className="account-form_input no-focus" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                    </FormItem>
-                )} />
+                <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                        <FormItem className="flex w-full flex-col gap-2">
+                            <FormLabel className="text-base-semibold text-light-2">Name</FormLabel>
+                            <FormControl>
+                                <Input type="text" className="account-form_input no-focus h-11" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                />
 
-                <FormField control={form.control} name="username" render={({ field }) => (
-                    <FormItem className="flex w-full flex-col gap-3">
-                        <FormLabel className="text-base-semibold text-light-2">Username</FormLabel>
-                        <FormControl>
-                            <Input type="text" className="account-form_input no-focus" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                    </FormItem>
-                )} />
+                <FormField
+                    control={form.control}
+                    name="username"
+                    render={({ field }) => (
+                        <FormItem className="flex w-full flex-col gap-2">
+                            <FormLabel className="text-base-semibold text-light-2">Username</FormLabel>
+                            <FormControl>
+                                <Input type="text" className="account-form_input no-focus h-11" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                />
 
-                <FormField control={form.control} name="bio" render={({ field }) => (
-                    <FormItem className="flex w-full flex-col gap-3">
-                        <FormLabel className="text-base-semibold text-light-2">
-                            Bio
-                        </FormLabel>
-                        <FormControl>
-                            <Textarea
-                                rows={5}
-                                className="account-form_input no-focus"
-                                {...field}
-                            />
-                        </FormControl>
-                        <FormMessage />
-                    </FormItem>
-                )} />
+                <FormField
+                    control={form.control}
+                    name="bio"
+                    render={({ field }) => (
+                        <FormItem className="flex w-full flex-col gap-2">
+                            <FormLabel className="text-base-semibold text-light-2">Bio</FormLabel>
+                            <FormControl>
+                                <Textarea rows={3} className="account-form_input no-focus min-h-[88px]" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                />
 
-                <Button type="submit" className="bg-primary-500">
+                <Button type="submit" className="h-11 bg-primary-500">
                     {btnTitle}
                 </Button>
             </form>

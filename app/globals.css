@@ -1,4 +1,5 @@
 @import "quill/dist/quill.snow.css";
+@import "@xterm/xterm/css/xterm.css";
 
 @tailwind base;
 @tailwind components;
@@ -172,15 +173,28 @@ html {
 /* ===== custom classes ===== */
 
 .editor-container {
-  overflow-y: auto;
+  overflow: visible;
   background: linear-gradient(180deg, #1f2937 0%, #111827 100%);
+  min-height: 100%;
+}
+
+.ql-container {
+  overflow: visible !important;
+}
+
+.ql-editor {
+  overflow: visible !important;
+  height: auto !important;
 }
 
 .editor-container .ql-editor{
   width: min(8.5in, calc(100% - 2rem));
   min-height: 11in;
+  height: auto !important;
   padding: 1in;
   margin: 1.25rem auto 2rem;
+  overflow-y: visible !important;
+
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
   background: repeating-linear-gradient(
     to bottom,
@@ -199,6 +213,8 @@ html {
     width: min(8.5in, 100%);
     padding: 0.75in;
     margin: 0.75rem auto 1.25rem;
+    overflow-y: visible !important;
+
   }
 }
 
@@ -206,6 +222,8 @@ html {
   .editor-container .ql-editor {
     background-color: #ffffff;
     color: #000000; 
+    overflow-y: visible !important;
+
   }
 }
 
@@ -249,6 +267,8 @@ html {
    margin: 0;
    box-shadow: none;
    align-self: flex-start;
+   overflow-y: visible !important;
+
   }
 
   .editor-container .ql-toolbar.ql-snow{

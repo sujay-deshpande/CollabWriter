@@ -23,6 +23,23 @@ const ws = new WebSocket(
   process.env.NEXT_PUBLIC_SOCKET_BACKEND_URL || "ws://localhost:5001"
 );
 
+const sendWsMessage = (payload: any) => {
+  const serialized = JSON.stringify(payload);
+
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(serialized);
+    return;
+  }
+
+  ws.addEventListener(
+    'open',
+    () => {
+      ws.send(serialized);
+    },
+    { once: true }
+  );
+};
+
 const themes = [
   'monokai', 'github', 'ext-language_tools',
   'ambiance', 'cloud9_night', 'chaos', 'chrome',
@@ -442,29 +459,15 @@ const Page = ({ params }: { params: { id: string } }) => {
 
 
   const handleRunCode=()=>{
-    const fileName=selectedPath.split('/').pop()
-    const extention=selectedPath.split('.').pop()
-    let runCommand=""
-    switch(extention){
-      case "js":
-        runCommand=`node ${fileName}`
-        break;
-      case "py":
-        runCommand=`python3 ${fileName}`
-        break;
-      case "c":
-        runCommand=`gcc ${fileName}`
-        break;
-      case "c++":
-        runCommand=`g++ ${fileName}`
-        break;
-      case "cpp":
-        runCommand=`g++ ${fileName}`
-        break;
-    }
-    runCommand=runCommand+'\r';
-    console.log(fileName, extention, runCommand, project, currentTerminal)
-    ws.send(JSON.stringify({type:"terminal:write", data:runCommand, projectId: project, terminalId:currentTerminal}))
+    const pathToRun = selectedPath || selectedTabPath
+    if (!project || !pathToRun) return
+
+    sendWsMessage({
+      type: 'code:execute',
+      projectId: project,
+      terminalId: currentTerminal,
+      path: pathToRun,
+    })
   }
 
 

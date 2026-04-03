@@ -201,7 +201,7 @@ const Tabs = ({filePath, isActive, setSelectedTabPath, setSeletedPath, index, ha
   return (
     <div className={` w-full bg-${bgcolor} ${isActive?isDarkMode?'editor-tab-active':"editor-tab-light-active":""} px-2 py-[6px] cursor-pointer text-small-regular flex justify-between items-center`} onClick={()=>{setSelectedTabPath(filePath); setSeletedPath(filePath)}}>
       <div className="flex justify-between items-center gap-2">
-        <i className={iconMapping[fileName.split(".").pop() as string]}></i>  {fileName}
+        <i className={iconMapping[fileName.split(".").pop() as string] || iconMapping[txt]}></i>  {fileName}
       </div>
       <div className="hover:bg-white-2 rounded-full hover:text-black-1 px-[6px] cursor-pointer" onClick={(e) => { e.stopPropagation(); handleRemoveTab(index); }}>×</div>
     </div> 

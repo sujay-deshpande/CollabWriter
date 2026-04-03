@@ -552,7 +552,7 @@ const FileTreeNode = ({ fileName, nodes, onSelect, path, searchSelectedPath, set
   </div>
 
   <div ref={folderMenuRef}className={`border-black-3 shadow-2xl px-1 py-1 rounded-md right-clicks-modals w-52 bg-${bgcolor} ${isDarkMode?"text-white-3":"text-black-1"}`}style={{...folderMenuStyle,position: "fixed",border: "1px solid black",zIndex: 1000, color:"whitesmoke"}}>
-    <div className="text-small-regular cursor-pointer px-2 py-1/2 hover:bg-orange-1 hover:text-white-1 mb-1 rounded-sm"style={{ cursor: "pointer", fontSize: "13px" }}onClick={() => handleFolderMenuClick("manage-access", path)}>Manage Access</div>
+    {/* <div className="text-small-regular cursor-pointer px-2 py-1/2 hover:bg-orange-1 hover:text-white-1 mb-1 rounded-sm"style={{ cursor: "pointer", fontSize: "13px" }}onClick={() => handleFolderMenuClick("manage-access", path)}>Manage Access</div> */}
     <div className="text-small-regular cursor-pointer px-2 py-1/2 hover:bg-orange-1 hover:text-white-1 mb-1 rounded-sm"style={{ cursor: "pointer", fontSize: "13px" }}onClick={() => handleFolderMenuClick("create-folder", path)}>New Folder...</div>
     <div className="text-small-regular cursor-pointer px-2 py-1/2 hover:bg-orange-1 hover:text-white-1 mb-1 rounded-sm"style={{ cursor: "pointer", fontSize: "13px" }}onClick={() => handleFolderMenuClick("create-file", path)}>New File...</div>
     <div className="text-small-regular cursor-pointer px-2 py-1/2 hover:bg-orange-1 hover:text-white-1 mb-1 rounded-sm"style={{ cursor: "pointer", fontSize: "13px" }}onClick={() => handleFolderMenuClick("rename", path)}>Rename</div>

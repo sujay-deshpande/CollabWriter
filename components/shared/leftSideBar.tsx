@@ -22,16 +22,14 @@ const LeftSideBar = () => {
   return (
     <section className="left_sidebar flex h-screen flex-col justify-between px-4 py-6">
       
-      {/* TOP SECTION */}
       <div>
         <Link
           href="/"
           className="flex items-center gap-2 pb-8 max-lg:justify-center"
         >
-          <Image src="/icons/logo.png" alt="logo" width={32} height={32} />
-          <h1 className="text-2xl font-extrabold text-white max-lg:hidden">
-            CollabWriter
-          </h1>
+          <Image src="/icons/logo.png" alt="Podcast Logo" width={30} height={30}/>
+          <h1 className='text-17 font-extrabold text-white-1 max-lg:hidden'> <span className='text-24'>C</span>ollabWriter</h1>
+        
         </Link>
 
         <nav className="flex flex-col gap-2">

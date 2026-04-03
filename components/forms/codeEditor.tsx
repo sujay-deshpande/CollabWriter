@@ -1,5 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import AceEditor from "react-ace";
+import ace from 'ace-builds/src-noconflict/ace';
+import { useUser } from '@clerk/nextjs';
 
 // Import ace editor themes
 import 'ace-builds/src-noconflict/mode-abap';
@@ -245,6 +247,7 @@ import "ace-builds/src-noconflict/theme-xcode";
 
 const ws = new WebSocket(process.env.NEXT_PUBLIC_SOCKET_BACKEND_URL || 'ws://localhost:5001');
 const BACKEND_HTTP_URL = (process.env.NEXT_PUBLIC_SOCKET_BACKEND_URL || 'ws://localhost:5001').replace(/^ws/i, 'http');
+const RangeCtor = (ace as any).require('ace/range').Range;
 {/* change the mode according to the path and the mode importion and  */ }
 const extensionToMode: Record<string, string> = {
     'js': 'javascript',
@@ -445,16 +448,119 @@ const extensionToMode: Record<string, string> = {
 
 
 const CodeEditor = ({ path, pId, selectedTheme }: any) => {
+    const { user } = useUser();
     const [code, setCode] = useState<any>("");
     const [selectedPathContent, setSelectedPathContent] = useState<any>("");
     const [extension, setExtension] = useState<any>("")
+    const editorRef = useRef<any>(null);
+    const cursorSocketRef = useRef<WebSocket | null>(null);
+    const markerByUserRef = useRef<Map<string, number>>(new Map());
     const isSaved = selectedPathContent === code;
-    console.log(extensionToMode[extension])
+
+    const currentUserId = String(user?.id || 'guest');
+    const currentUserName = String(user?.fullName || user?.firstName || user?.username || 'Guest');
+    const cursorRoomId = `code:${String(pId || '')}`;
+
+    const colorFromUserId = (id: string) => {
+        let hash = 0;
+        for (let i = 0; i < id.length; i += 1) {
+            hash = id.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const hue = Math.abs(hash) % 360;
+        return `hsl(${hue}deg 85% 55%)`;
+    };
+
+    const ensureCursorClassStyle = (className: string, color: string, userName: string) => {
+        const styleId = `style-${className}`;
+        const safeName = String(userName || 'Guest').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+
+        let style = document.getElementById(styleId) as HTMLStyleElement | null;
+        if (!style) {
+            style = document.createElement('style');
+            style.id = styleId;
+            document.head.appendChild(style);
+        }
+
+        style.textContent = `
+            .ace_marker-layer .${className}{
+                position:absolute;
+                background:transparent;
+                border-left:2px solid ${color};
+            }
+            .ace_marker-layer .${className}::after{
+                content:"${safeName}";
+                position:absolute;
+                left:4px;
+                top:-16px;
+                background:${color};
+                color:#ffffff;
+                font-size:10px;
+                line-height:1;
+                padding:3px 6px;
+                border-radius:6px;
+                white-space:nowrap;
+            }
+        `;
+    };
+
+    const clearRemoteCursors = useCallback(() => {
+        const editor = editorRef.current;
+        if (!editor) return;
+
+        const session = editor.getSession();
+        markerByUserRef.current.forEach((markerId) => {
+            session.removeMarker(markerId);
+        });
+        markerByUserRef.current.clear();
+    }, []);
+
+    const upsertRemoteCursor = useCallback((payload: any) => {
+        const editor = editorRef.current;
+        if (!editor) return;
+
+        const userId = String(payload.userId || 'unknown');
+        if (!userId || userId === currentUserId) return;
+        if (String(payload.path || '') !== String(path || '')) return;
+
+        const row = Math.max(Number(payload.row ?? 0), 0);
+        const column = Math.max(Number(payload.column ?? 0), 0);
+
+        const className = `remote-cursor-${userId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+        const color = String(payload.color || '#2563eb');
+        const userName = String(payload.userName || payload.email || 'Guest');
+        ensureCursorClassStyle(className, color, userName);
+
+        const session = editor.getSession();
+        const existingMarker = markerByUserRef.current.get(userId);
+        if (existingMarker !== undefined) {
+            session.removeMarker(existingMarker);
+        }
+
+        const markerId = session.addMarker(new RangeCtor(row, column, row, column + 1), className, 'text', true);
+        markerByUserRef.current.set(userId, markerId);
+    }, [currentUserId, path]);
+
+    const broadcastCursor = useCallback((row: number, column: number) => {
+        if (!cursorSocketRef.current || cursorSocketRef.current.readyState !== WebSocket.OPEN) return;
+        if (!pId || !path) return;
+
+        cursorSocketRef.current.send(
+            JSON.stringify({
+                type: 'cursor-update',
+                id: cursorRoomId,
+                userId: currentUserId,
+                userName: currentUserName,
+                color: colorFromUserId(currentUserId),
+                path,
+                row,
+                column,
+            })
+        );
+    }, [cursorRoomId, currentUserId, currentUserName, pId, path]);
     useEffect(() => {
         const arrpath = path.split(".");
         const Extionsion = arrpath[arrpath.length - 1] || "javascript";
         setExtension(Extionsion);
-        console.log(extensionToMode[extension])
     }, [path]);
 
     useEffect(() => {
@@ -467,7 +573,7 @@ const CodeEditor = ({ path, pId, selectedTheme }: any) => {
                 clearTimeout(timer);
             };
         }
-    }, [code]);
+    }, [code, isSaved, pId, path]);
 
     const getFileContents = useCallback(async () => {
         if (!path || !pId) return;
@@ -507,14 +613,49 @@ const CodeEditor = ({ path, pId, selectedTheme }: any) => {
     }, [getFileContents, path]);
 
     useEffect(() => {
-        ws.onmessage = async (event) => {
+        const onMessage = async (event: MessageEvent) => {
             const message = JSON.parse(event.data);
             if (message.type === 'file:refresh') {
                 console.log('Changed');
                 if (path) getFileContents();
             }
         };
+        ws.addEventListener('message', onMessage);
+
+        return () => {
+            ws.removeEventListener('message', onMessage);
+        };
     }, [getFileContents, path]);
+
+    useEffect(() => {
+        if (!pId) return;
+
+        const socket = new WebSocket(process.env.NEXT_PUBLIC_SOCKET_BACKEND_URL || 'ws://localhost:5001');
+        cursorSocketRef.current = socket;
+
+        socket.onopen = () => {
+            socket.send(JSON.stringify({ type: 'get-document', id: cursorRoomId }));
+        };
+
+        socket.onmessage = (event) => {
+            const message = JSON.parse(event.data);
+            if (message.type === 'cursor-update' && String(message.id || '') === cursorRoomId) {
+                upsertRemoteCursor(message);
+            }
+        };
+
+        return () => {
+            if (cursorSocketRef.current) {
+                cursorSocketRef.current.close();
+                cursorSocketRef.current = null;
+            }
+            clearRemoteCursors();
+        };
+    }, [cursorRoomId, pId, upsertRemoteCursor, clearRemoteCursors]);
+
+    useEffect(() => {
+        clearRemoteCursors();
+    }, [path, clearRemoteCursors]);
 
     return (
         <div style={{ height: '100%' }}>
@@ -525,6 +666,13 @@ const CodeEditor = ({ path, pId, selectedTheme }: any) => {
                 theme={selectedTheme || "monokai"}
                 value={code}
                 onChange={e => setCode(e)}
+                onLoad={(editor) => {
+                    editorRef.current = editor;
+                    editor.selection.on('changeCursor', () => {
+                        const position = editor.getCursorPosition();
+                        broadcastCursor(position.row, position.column);
+                    });
+                }}
                 name="UNIQUE_ID_OF_DIV"
                 editorProps={{ $blockScrolling: true }}
             />

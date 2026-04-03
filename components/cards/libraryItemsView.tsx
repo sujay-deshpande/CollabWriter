@@ -161,31 +161,34 @@ const LibraryItemsView = ({ items }: { items: LibraryItem[] }) => {
               <Link
                 key={item.id}
                 href={getItemRoute(item)}
-                className='rounded-lg border border-white-3 bg-black-2 p-4 transition-colors hover:border-orange-1'
+                className='rounded-lg border border-white-3 bg-black-2 p-4 transition-all hover:border-orange-1'
               >
-                <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
+                <div className='grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start'>
                   <div className='min-w-0'>
+                    <div className='mb-3 flex flex-wrap items-center gap-2'>
+                      <span className='rounded-md bg-[#ffffff10] px-2 py-1 text-12 capitalize text-white-2 whitespace-nowrap'>
+                        {item.type === 'code' ? 'Project' : 'File'}
+                      </span>
+                      <span
+                        className={cn(
+                          'rounded-md px-2 py-1 text-12 whitespace-nowrap',
+                          item.isOwner
+                            ? 'bg-[#204a2f] text-[#9dd9b0]'
+                            : 'bg-[#3a2f1f] text-[#f6cf8f]'
+                        )}
+                      >
+                        {item.isOwner ? 'Owner' : 'Shared'}
+                      </span>
+                    </div>
+
                     <h2 className='text-16 font-bold text-white-1 line-clamp-1'>{item.title || 'Untitled'}</h2>
-                    <p className='mt-1 text-12 text-white-4 line-clamp-1'>{item.description || 'No description provided'}</p>
+                    <p className='mt-1 text-12 text-white-4 line-clamp-2'>{item.description || 'No description provided'}</p>
                   </div>
 
-                  <div className='flex flex-wrap items-center gap-2 text-12'>
-                    <span className='rounded-md bg-[#ffffff10] px-2 py-1 capitalize text-white-2'>
-                      {item.type === 'code' ? 'Project' : 'File'}
-                    </span>
-                    <span
-                      className={cn(
-                        'rounded-md px-2 py-1',
-                        item.isOwner
-                          ? 'bg-[#204a2f] text-[#9dd9b0]'
-                          : 'bg-[#3a2f1f] text-[#f6cf8f]'
-                      )}
-                    >
-                      {item.isOwner ? 'Owner' : 'Shared'}
-                    </span>
-                    <span className='rounded-md bg-[#ffffff08] px-2 py-1 text-white-4'>Created {formatDate(item.createdAt)}</span>
-                    <span className='rounded-md bg-[#ffffff08] px-2 py-1 text-white-4'>Updated {formatDate(item.updatedAt)}</span>
-                    <span className='rounded-md bg-[#ffffff08] px-2 py-1 text-white-4'>By {item.owner.name || item.owner.username || 'Unknown'}</span>
+                  <div className='flex flex-wrap items-center gap-2 text-12 lg:justify-end'>
+                    <span className='rounded-md bg-[#ffffff08] px-2 py-1 text-white-4 whitespace-nowrap'>Created {formatDate(item.createdAt)}</span>
+                    <span className='rounded-md bg-[#ffffff08] px-2 py-1 text-white-4 whitespace-nowrap'>Updated {formatDate(item.updatedAt)}</span>
+                    <span className='rounded-md bg-[#ffffff08] px-2 py-1 text-white-4 whitespace-nowrap'>By {item.owner.name || item.owner.username || 'Unknown'}</span>
                   </div>
                 </div>
               </Link>

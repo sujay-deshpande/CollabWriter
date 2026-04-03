@@ -1,7 +1,6 @@
 'use client'
 import React, { useEffect, useRef, useState } from 'react'
 import { Terminal as XTerminal } from '@xterm/xterm'
-import '@xterm/xterm/css/xterm.css'
 
 const themeMap:any={
     "light-1": "#FFFFFF",
@@ -33,6 +32,7 @@ const Terminal = ({ pId, isDarkMode, bgcolor, tId}: any) => {
     const terminalRef = useRef<HTMLDivElement | null>(null)
     const wsRef = useRef<WebSocket | null>(null)
     const termRef = useRef<XTerminal | null>(null)
+    const inputBufferRef = useRef('')
     const [showTerminal, setShowTerminal] = useState(true)
 
     useEffect(() => {
@@ -63,6 +63,7 @@ const Terminal = ({ pId, isDarkMode, bgcolor, tId}: any) => {
                 cols: 88,
                 fontFamily: 'Courier New',
                 fontSize: 14,
+                disableStdin: false,
             })
 
             term.open(terminalRef.current)
@@ -77,12 +78,40 @@ const Terminal = ({ pId, isDarkMode, bgcolor, tId}: any) => {
                 xterm.classList.add('no-scrollbar');
             });
 
+            inputBufferRef.current = ''
 
-            term.onData((data: any) => {
-                if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                    wsRef.current.send(JSON.stringify({ type: 'terminal:write', data: data, projectId: projectId, terminalId:terminalId }))
+            term.onData((data: string) => {
+                if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return
+
+                if (data === '\r') {
+                    const command = inputBufferRef.current
+                    term.write('\r\n')
+                    wsRef.current.send(
+                        JSON.stringify({
+                            type: 'terminal:write',
+                            command,
+                            projectId,
+                            terminalId,
+                        })
+                    )
+                    inputBufferRef.current = ''
+                    return
+                }
+
+                if (data === '\u007F') {
+                    if (inputBufferRef.current.length > 0) {
+                        inputBufferRef.current = inputBufferRef.current.slice(0, -1)
+                        term.write('\b \b')
+                    }
+                    return
+                }
+
+                if (data >= ' ') {
+                    inputBufferRef.current += data
+                    term.write(data)
                 }
             })
+
 
             wsRef.current = new WebSocket(process.env.NEXT_PUBLIC_SOCKET_BACKEND_URL || 'ws://localhost:5001')
 
@@ -91,6 +120,7 @@ const Terminal = ({ pId, isDarkMode, bgcolor, tId}: any) => {
                 if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
                     if (pId) {
                         wsRef.current?.send(JSON.stringify({ type: "project:started", data: { id: pId, tId: tId } }));
+                        wsRef.current?.send(JSON.stringify({ type: 'terminal:write', command: '', projectId: pId, terminalId: tId }));
                     }                
                 }
                 
@@ -98,7 +128,11 @@ const Terminal = ({ pId, isDarkMode, bgcolor, tId}: any) => {
 
             wsRef.current.onmessage = (event) => {
                 const message = JSON.parse(event.data)
-                if (message.type === 'terminal:data' && message.projectId === projectId) {
+                if (
+                    message.type === 'terminal:data' &&
+                    String(message.projectId) === String(projectId) &&
+                    String(message.terminalId ?? '') === String(terminalId)
+                ) {
                     term.write(message.data)
                 }
             }
@@ -113,12 +147,16 @@ const Terminal = ({ pId, isDarkMode, bgcolor, tId}: any) => {
         }
 
         return () => {
+            if (wsRef.current) {
+                wsRef.current.close()
+                wsRef.current = null
+            }
             if (termRef.current) {
                 termRef.current.dispose()
                 termRef.current = null
             }
         }
-    }, [projectId, isDarkMode, showTerminal,bgcolor, terminalId])
+    }, [projectId, isDarkMode, showTerminal, bgcolor, terminalId, pId, tId])
 
     useEffect(() => {
         setProjectId(pId)

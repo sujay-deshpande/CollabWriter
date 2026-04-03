@@ -2,7 +2,7 @@
 import { fetchDocument, fetchProject } from '@/lib/actions/document.action'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
-import React, { useEffect } from 'react'
+import React from 'react'
 import TextDocCardOptions from '../shared/textDocCardOptions'
 
 const DocumentCard = ({imgUrl, title, description, docId, type, isNew, userId, accessEmails, isPublic}:any) => {
@@ -16,7 +16,6 @@ const DocumentCard = ({imgUrl, title, description, docId, type, isNew, userId, a
       }else{
         await fetchProject(docId, userId)
       }
-      router.push(`/${type==="text"?"text-editor/documents":"code-editor/codes"}/${docId}`)
     }
     router.push(`/${type==="text"?"text-editor/documents":"code-editor/codes"}/${docId}`)
   }

@@ -48,9 +48,10 @@ export async function updateUser({
         },
         { upsert: true }
       );
-  
+
       if (path === "/profile/edit") {
         revalidatePath(path);
+        revalidatePath(`/profile/${id}`);
       }
     } catch (error: any) {
       throw new Error(`Failed to create/update user: ${error.message}`);

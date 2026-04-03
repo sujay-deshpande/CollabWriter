@@ -8,7 +8,7 @@ import {
   updateDocumentTitleDescription,
 } from '@/lib/actions/document.action';
 import TopTextEditorNavbar from '../shared/topTextEditorNavbar';
-import {TEXT_EDITOR_TOOLBAR_OPTIONS as TOOLBAR_OPTIONS } from "../../constants/index";
+import { TEXT_EDITOR_TOOLBAR_OPTIONS as TOOLBAR_OPTIONS } from "../../constants/index";
 import InEditorChat from '../shared/inEditorChat';
 import { MessageSquare, X } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
@@ -69,6 +69,7 @@ const TextEditor = ({
   const yjsSeededRef = useRef(false);
   const trySeedAfterYjsRemoteRef = useRef<(() => void) | null>(null);
   const editorHostRef = useRef<HTMLDivElement | null>(null);
+  const scrollContainerRef = useRef<HTMLElement | null>(null);
   const [showChatPanel, setShowChatPanel] = useState(false);
   const [pageCount, setPageCount] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
@@ -296,16 +297,16 @@ const TextEditor = ({
 
   const schedulePersist = useCallback(
     (serializedContent: string, revisionMeta?: typeof pendingPersistRevisionMetaRef.current) => {
-    pendingPersistContentRef.current = serializedContent;
-    pendingPersistRevisionMetaRef.current = revisionMeta || null;
+      pendingPersistContentRef.current = serializedContent;
+      pendingPersistRevisionMetaRef.current = revisionMeta || null;
 
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-    }
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+      }
 
-    saveTimerRef.current = setTimeout(() => {
-      void flushPersistQueue();
-    }, 900);
+      saveTimerRef.current = setTimeout(() => {
+        void flushPersistQueue();
+      }, 900);
     },
     [flushPersistQueue]
   );
@@ -550,7 +551,6 @@ const TextEditor = ({
       const isDelete =
         Array.isArray(delta?.ops) && delta.ops.some((op: any) => op && typeof op.delete === 'number');
 
-      // Maintain at least one "blank page chunk" at the end while editing.
       if (!isDelete) {
         if (trailingNewlines < pageBreakNewlines) {
           const missing = pageBreakNewlines - trailingNewlines;
@@ -566,12 +566,11 @@ const TextEditor = ({
         return;
       }
 
-      // If user deleted/backspaced and the last page chunk is empty, remove it.
       if (measuredPages <= 1) return;
       if (trailingNewlines < pageBreakNewlines) return;
 
       const deleteStart = Math.max(0, len - pageBreakNewlines);
-      if (cursorIndex > deleteStart) return; // cursor is still inside the blank page chunk
+      if (cursorIndex > deleteStart) return;
 
       isAdjustingPagesRef.current = true;
       try {
@@ -597,8 +596,6 @@ const TextEditor = ({
       const content = quill.getContents();
       const serialized = JSON.stringify(content);
 
-      // Build a humanized, "smart/AI-like" summary for the revision.
-      // We keep it heuristic (no LLM) but it reads like an AI changelog.
       const ops = Array.isArray(delta?.ops) ? delta.ops : [];
       let insertedChars = 0;
       let deletedChars = 0;
@@ -609,7 +606,6 @@ const TextEditor = ({
         if (typeof op?.insert === 'string') {
           insertedChars += op.insert.length;
         } else if (op?.insert != null) {
-          // Non-string inserts (e.g. embeds) are treated as a small change.
           insertedChars += 1;
         }
         if (typeof op?.delete === 'number') {
@@ -726,17 +722,14 @@ const TextEditor = ({
     const onTextChange = () => computeMarkers();
     quill.on('text-change', onTextChange);
 
-    const containerEl =
-      typeof quill.container === 'object' && quill.container
-        ? (quill.container as HTMLElement)
-        : null;
+    const scrollEl = scrollContainerRef.current;
     const onScroll = () => computeMarkers();
-    containerEl?.addEventListener('scroll', onScroll);
+    scrollEl?.addEventListener('scroll', onScroll);
 
     const timer = setInterval(computeMarkers, 250);
     return () => {
       quill.off('text-change', onTextChange);
-      containerEl?.removeEventListener('scroll', onScroll);
+      scrollEl?.removeEventListener('scroll', onScroll);
       clearInterval(timer);
     };
   }, [quill, cursorUsers]);
@@ -744,7 +737,7 @@ const TextEditor = ({
   useEffect(() => {
     if (!quill) return;
 
-    const host = editorHostRef.current;
+    const host = scrollContainerRef.current;
     if (!host) return;
 
     const updatePageMeta = () => {
@@ -792,7 +785,7 @@ const TextEditor = ({
   }, [quill, pageCount]);
 
   const goToPage = useCallback((pageNumber: number) => {
-    const host = editorHostRef.current;
+    const host = scrollContainerRef.current;
     if (!host) return;
 
     const clampedPage = Math.max(1, Math.min(pageCount, pageNumber));
@@ -823,9 +816,10 @@ const TextEditor = ({
     const initEditor = async () => {
       wrapper.innerHTML = '';
       wrapper.style.width = '100%';
-      wrapper.style.height = '100%';
+      wrapper.style.height = 'auto';
+      wrapper.style.overflow = 'visible';
       const editor = document.createElement('div');
-      editor.className = 'w-full h-full';
+      editor.className = 'w-full';
       wrapper.append(editor);
 
       const quillModule = await import('quill');
@@ -837,6 +831,11 @@ const TextEditor = ({
           toolbar: TOOLBAR_OPTIONS,
         },
       });
+      const root = q.root as HTMLElement;
+
+      root.style.height = 'auto';
+      root.style.minHeight = '0';
+      root.style.overflow = 'visible';
 
       const initialContent = getInitialContent();
       applyContentToEditor(q, initialContent);
@@ -847,7 +846,7 @@ const TextEditor = ({
       }
 
       q.enable();
-  try {
+      try {
         q.keyboard.addBinding({ key: 9 }, (range: any) => {
           if (!range) return true;
           try {
@@ -892,13 +891,18 @@ const TextEditor = ({
     void initEditor();
   }, [getInitialContent, applyContentToEditor]);
 
-  const handleTitleChange=async(e:any)=>{
+  const handleTitleChange = async (e: any) => {
     const nextTitle = e.target.value;
     setDocName(nextTitle)
     await updateDocumentTitleDescription(documentData.id, nextTitle, docDesc)
   }
-
-  const     handleDescChange=async(e:any)=>{
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
+  const handleDescChange = async (e: any) => {
     const nextDesc = e.target.value;
     setDocDesc(nextDesc)
     await updateDocumentTitleDescription(documentData.id, docName, nextDesc)
@@ -913,7 +917,7 @@ const TextEditor = ({
   }
 
   return (
-    <div className="flex flex-col h-[96vh]">
+    <div className="flex flex-col h-[100vh] overflow-hidden">
       <TopTextEditorNavbar
         docName={docName}
         docDesc={docDesc}
@@ -939,7 +943,7 @@ const TextEditor = ({
           ))}
         </div>
       )} */}
-      <section className="flex flex-1 min-h-0">
+      <section ref={scrollContainerRef} className="flex flex-1 min-h-0 overflow-y-auto">
         <div className="flex-1 min-w-0 relative">
           {/* <div className="absolute right-4 top-4 z-30 flex items-center gap-2 rounded-xl border border-white/10 bg-black/70 px-3 py-2 text-xs text-white backdrop-blur">
             <button
@@ -968,10 +972,7 @@ const TextEditor = ({
             </button>
           </div> */}
 
-          <div
-            ref={editorHostRef}
-            className="editor-container relative h-full min-h-0 z-0"
-          >
+         <div ref={editorHostRef} className="editor-container relative z-0">
             <div ref={wrapperRef}></div>
             {remoteCursorMarkers.length > 0 && (
               <div className="pointer-events-none absolute inset-0 z-10">
@@ -1069,7 +1070,7 @@ const TextEditor = ({
                 </button>
               </div>
 
-      <div className="h-[calc(100%-56px)] overflow-y-auto p-4">
+              <div className="h-[calc(100%-56px)] overflow-hidden p-4">
                 {historyLoading ? (
                   <div className="text-sm text-white-4">Loading…</div>
                 ) : historyItems.length === 0 ? (
@@ -1095,8 +1096,8 @@ const TextEditor = ({
                             <div className="text-[11px] text-white-4">
                               {rev.createdAt
                                 ? formatDistanceToNow(new Date(rev.createdAt), {
-                                    addSuffix: true,
-                                  })
+                                  addSuffix: true,
+                                })
                                 : ''}
                             </div>
                           </div>
