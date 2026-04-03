@@ -1,7 +1,14 @@
 {
   "name": "collabwriter",
-  "version": "0.1.0",
+  "version": "1.6.0",
+  "description": "Collaborative writing and code editing platform built with Next.js and Node.js.",
+  "author": "Sujay Deshpande",
   "private": true,
+  "packageManager": "npm@10.8.1",
+  "engines": {
+    "node": ">=18.17.0 <21",
+    "npm": ">=10.8.1"
+  },
   "scripts": {
     "dev": "next dev",
     "backend": "node backend/server.js",
