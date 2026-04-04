@@ -438,6 +438,25 @@ const TextEditor = ({
     yTextRef.current = yText;
     yjsSeededRef.current = false;
 
+    const getQuillDeltaOps = (editor: any): any[] => {
+      if (!editor || typeof editor.getContents !== 'function') return [];
+      try {
+        const contents = editor.getContents();
+        const ops = contents?.ops;
+        return Array.isArray(ops) ? ops : [];
+      } catch {
+        return [];
+      }
+    };
+
+    const yTextIsLegacyJsonQuillBlob = (text: Y.Text): boolean => {
+      try {
+        return text.toString().startsWith('{"ops"');
+      } catch {
+        return false;
+      }
+    };
+
     const trySeedYTextFromQuill = () => {
       const doc = yDocRef.current;
       const text = yTextRef.current;
@@ -445,7 +464,18 @@ const TextEditor = ({
       if (!doc || !text || !editor || yjsSeededRef.current) {
         return;
       }
+
+      const ops = getQuillDeltaOps(editor);
+
       if (text.length > 0) {
+        if (yTextIsLegacyJsonQuillBlob(text)) {
+          doc.transact(() => {
+            text.delete(0, text.length);
+            if (ops.length > 0) {
+              text.applyDelta(ops);
+            }
+          }, 'migrate-json-ytext');
+        }
         yjsSeededRef.current = true;
         const serialized = getSerializedContent(editor);
         if (serialized) {
@@ -453,15 +483,20 @@ const TextEditor = ({
         }
         return;
       }
-      const serializedInitial = getSerializedContent(editor);
-      if (!serializedInitial) {
+
+      if (ops.length === 0) {
         yjsSeededRef.current = true;
         return;
       }
+
       doc.transact(() => {
-        text.insert(0, serializedInitial);
+        text.applyDelta(ops);
       }, 'init-from-quill');
-      lastPersistedContentRef.current = serializedInitial;
+
+      const serializedInitial = getSerializedContent(editor);
+      if (serializedInitial) {
+        lastPersistedContentRef.current = serializedInitial;
+      }
       yjsSeededRef.current = true;
     };
 
@@ -542,41 +577,24 @@ const TextEditor = ({
       const trailingNewlines = trailingMatch ? trailingMatch[0].length : 0;
 
       const len = typeof quill.getLength === 'function' ? quill.getLength() : plainText.length;
-      const root = quill.root as HTMLElement;
-      const measuredPages = Math.max(1, Math.ceil(Number(root.scrollHeight || PAGE_HEIGHT_PX) / PAGE_HEIGHT_PX));
-
-      const range = typeof quill.getSelection === 'function' ? quill.getSelection() : null;
-      const cursorIndex = range ? Number(range.index || 0) : len;
 
       const isDelete =
         Array.isArray(delta?.ops) && delta.ops.some((op: any) => op && typeof op.delete === 'number');
 
-      if (!isDelete) {
-        if (trailingNewlines < pageBreakNewlines) {
-          const missing = pageBreakNewlines - trailingNewlines;
-          if (missing > 0) {
-            isAdjustingPagesRef.current = true;
-            try {
-              quill.insertText(len, '\n'.repeat(missing), 'user');
-            } finally {
-              isAdjustingPagesRef.current = false;
-            }
-          }
-        }
+      if (isDelete) {
         return;
       }
 
-      if (measuredPages <= 1) return;
-      if (trailingNewlines < pageBreakNewlines) return;
-
-      const deleteStart = Math.max(0, len - pageBreakNewlines);
-      if (cursorIndex > deleteStart) return;
-
-      isAdjustingPagesRef.current = true;
-      try {
-        quill.deleteText(deleteStart, pageBreakNewlines, 'user');
-      } finally {
-        isAdjustingPagesRef.current = false;
+      if (trailingNewlines < pageBreakNewlines) {
+        const missing = pageBreakNewlines - trailingNewlines;
+        if (missing > 0) {
+          isAdjustingPagesRef.current = true;
+          try {
+            quill.insertText(len, '\n'.repeat(missing), 'user');
+          } finally {
+            isAdjustingPagesRef.current = false;
+          }
+        }
       }
     };
 

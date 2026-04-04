@@ -395,7 +395,9 @@ export function TextEditorWithSync({
 
             const diff = getSingleRangeDiff(oldContent, newContent);
 
-            if (diff && yDocRef.current && yTextRef.current) {
+            const diffRebuildsNewContent = diff && diff.position >= 0 && diff.position <= oldContent.length && diff.position + diff.deletedText.length <= oldContent.length && oldContent.slice(0, diff.position) + diff.insertedText + oldContent.slice(diff.position + diff.deletedText.length) === newContent;
+
+            if (diffRebuildsNewContent && yDocRef.current && yTextRef.current) {
                 yDocRef.current.transact(() => {
                     if (diff.deletedText.length > 0) {
                         yTextRef.current?.delete(diff.position, diff.deletedText.length);
