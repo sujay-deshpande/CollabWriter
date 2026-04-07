@@ -1,10 +1,15 @@
 # CollabWriter - Single Platform for Document & Code Editor
-### HCL GUVI Hackathon 2026
 CollabWriter is a full-stack collaborative workspace that combines a rich-text document editor and a code playground in one application. Users get live cursors, in-editor chat, a simulated terminal, file-tree sync, and document persistence backed by MongoDB, with authentication handled by Clerk.
 
 **Live demo:** [https://collabwriter.serviceapp.live/](https://collabwriter.serviceapp.live/)
 
+**Presentation:** [https://tinyurl.com/collabwriter](https://tinyurl.com/collabwriter)
+
+**Video Demo:** [https://youtu.be/5RbqNOZ_RKU](https://youtu.be/5RbqNOZ_RKU)
+
 ---
+
+### Most important thing the sharing option is named as manage access and it's in 3 dots right corner of document or code so don't consider it as non sharable document.
 
 ## Table of contents
 
